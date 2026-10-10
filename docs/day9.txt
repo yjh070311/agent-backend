@@ -1,0 +1,366 @@
+📅 Week 2 / Day 2（Day 9）：Pydantic 请求/响应模型
+
+📌 今日核心死磕
+
+1. [[Pydantic 数据校验]] — 把「脏输入」挡在业务逻辑之外
+
+它是什么： Pydantic 用 BaseModel 子类声明数据模型，字段用类型注解（str、int、list[str]）定义。传入数据时 Pydantic 自动做类型转换和校验，校验失败抛 ValidationError（在 FastAPI 里自动变成 422 响应）。Field() 函数给字段加更细的约束：min_length、ge/le（数值范围）、正则 pattern、default。
+
+它解决 Agent 工程里的什么痛点： Agent 后端接收的输入是不可信的——客户端可能传错类型、缺字段、字段太长、数值越界。如果路由函数里用手写 if 一个个校验，代码又臭又容易漏。Pydantic 把这些校验声明式地写在模型定义里，FastAPI 在进路由函数之前就完成校验，你的业务逻辑拿到的永远是干净数据。
+
+今天为什么必须学： Week 3 的简历解析、岗位匹配要处理复杂的嵌套 JSON（简历里有工作经历数组、技能数组）。如果今天不搞懂 Pydantic 的嵌套模型和校验规则，Week 3 面对真实简历数据会寸步难行。
+
+新手最容易踩什么坑：
+- 以为 Pydantic 会「严格拒绝」类型不对的数据——其实它会自动转换："123" 会转成 int 123，只有转不了才报错
+- Field 校验写在 = Field(...) 里，但忘了它和普通默认值（= "default"）的区别
+- 嵌套模型忘了写类型注解，或者写成了 list 而不是 list[SubModel]，校验就没生效
+
+---
+
+2. [[JSON API]] + 422 错误 — 理解校验失败的完整链路
+
+它是什么： JSON API 是「请求体是 JSON、响应体也是 JSON」的接口约定。422 Unprocessable Entity 是 FastAPI 校验失败时返回的标准状态码——意思是「请求格式对（是合法 JSON），但内容不符合业务要求（缺字段、类型错）」。
+
+它解决 Agent 工程里的什么痛点： 客户端调用你的 API 时，422 错误体里会精确指出「哪个字段、哪里错了、期望什么类型」——这是给调用方的「错误说明书」。理解 422 的生成机制，你才能写出友好的 API，也才能看懂别人 API 返回的 422。
+
+今天为什么必须学： 今天要把 Day 8 的 ChatRequest 从「一个 message: str」扩展成「有校验规则、有嵌套结构」的完整模型，并观察 422 错误体的结构。这是理解「API 输入契约」的关键一天。
+
+新手最容易踩什么坑：
+- 看到 422 就以为「服务端代码报错了」——其实 422 是「客户端发的东西不对」，服务端正常工作
+- 不知道 Field 的 description 会显示在 /docs 里，白白浪费了自动文档的友好性
+- 分不清 400（格式都错了，比如不是 JSON）和 422（JSON 对但字段不对）
+
+---
+
+🎯 6 小时精细化路线
+
+上午 2 小时：看文档 + 最小验证（09:00–11:00）
+
+┌──────┬─────────────────────────────────┬───────────────────────────────────┬───────────────────────────────────┐
+│ 时间 │            具体任务             │             预期产出              │            成功检查点             │
+├──────┼─────────────────────────────────┼───────────────────────────────────┼───────────────────────────────────┤
+│ 40   │ 读 Pydantic 官方文档的 Models   │ 理解                              │ 写一个 User(BaseModel) 模型，验证 │
+│ min  │ 章节                            │ BaseModel、字段类型、自动转换     │  "18" 自动转 int                  │
+├──────┼─────────────────────────────────┼───────────────────────────────────┼───────────────────────────────────┤
+│ 30   │ 读 Pydantic 的 Field            │ 理解                              │ 写一个带 3 种校验规则的模型       │
+│ min  │ 文档（constraints 部分）        │ min_length、ge、pattern、default  │                                   │
+├──────┼─────────────────────────────────┼───────────────────────────────────┼───────────────────────────────────┤
+│ 30   │ 读 FastAPI 的 Body              │ 理解嵌套模型的请求体结构          │ 写一个带嵌套模型的请求体          │
+│ min  │ 文档（嵌套模型部分）            │                                   │                                   │
+├──────┼─────────────────────────────────┼───────────────────────────────────┼───────────────────────────────────┤
+│ 20   │ 在 /docs 里故意发错误请求，观察 │ 理解
+│ min  │  422 错误体的结构               │ 字段                              │                                   │
+└──────┴─────────────────────────────────┴───────────────────────────────────┴───────────────────────────────────┘
+
+关联双链：[[Pydantic 数据校验]]、[[JSON API]]、[[HTTP 状态码]]
+
+---
+
+下午 3 小时：扩展模型 + 接入路由（13:00–16:00）
+
+┌───────┬────────────────────────────────────────────────────┬───────────────────────┬────────────────────────────┐
+│ 时间  │                      具体任务                      │       预期产出        │         成功检查点         │
+├───────┼────────────────────────────────────────────────────┼───────────────────────┼────────────────────────────┤
+│ 50    │ 扩展 app/schemas/chat.py：加 Field                 │ ChatRequest           │ 发超长/非法消息返回 422    │
+│ min   │ 校验（长度、正则、默认值）                         │ 有完整校验            │                            │
+├───────┼────────────────────────────────────────────────────┼───────────────────────┼────────────────────────────┤
+│ 50    │ 增加嵌套模型：ChatRequest 里嵌套 Message           │ 支持多轮对话的请求体  │ 发多条 messages            │
+│ min   │ 模型（支持多轮消息数组）                           │                       │ 的请求能正确解析           │
+├───────┼────────────────────────────────────────────────────┼───────────────────────┼────────────────────────────┤
+│ 50    │ 完善 ChatResponse：加 usage（token                 │ 响应结构完整          │ /docs 里响应结构完整显示   │
+│ min   │ 统计）、created_at（时间戳）                       │                       │                            │
+├───────┼────────────────────────────────────────────────────┼───────────────────────┼────────────────────────────┤
+│ 30    │ 更新 chat.py 路由：处理多轮消息，返回完整响应      │ 路由使用新模型        │ 合法请求 200，非法请求 422 │
+│ min   │                                                    │                       │                            │
+└───────┴────────────────────────────────────────────────────┴───────────────────────┴────────────────────────────┘
+
+关联双链：[[Pydantic 数据校验]]、[[LLM messages 结构]]、[[JSON API]]
+
+---
+
+晚上 1 小时：整理 + 笔记 + 自测（19:00–20:00）
+
+┌────────┬─────────────────────────────────────────────────────┬────────────────┬─────────────────────────────────┐
+│  时间  │                      具体任务                       │    预期产出    │           成功检查点            │
+├────────┼─────────────────────────────────────────────────────┼────────────────┼─────────────────────────────────┤
+│ 20 min │ 对比「手写 if 校验」和「Pydantic 校验」的代码量差异 │ 一份对比记录   │ 能说服别人「为什么用 Pydantic」 │
+├────────┼─────────────────────────────────────────────────────┼────────────────┼─────────────────────────────────┤
+│ 15 min │ 整理「Pydantic 自动类型转换」和「422 错误」笔记     │ 两个知识点笔记 │ 每个笔记有 1 个踩坑警告         │
+├────────┼─────────────────────────────────────────────────────┼────────────────┼─────────────────────────────────┤
+│ 10 min │ 自测 3 道题                                         │ 每题有答案草稿 │ 不确定的用 ? 标记               │
+├────────┼─────────────────────────────────────────────────────┼────────────────┼─────────────────────────────────┤
+│ 10 min │ git add . + commit                                  │ 一次 commit    │ git log 显示 2 条 commit        │
+└────────┴─────────────────────────────────────────────────────┴────────────────┴─────────────────────────────────┘
+
+关联双链：[[Git 提交规范]]、[[Pydantic 数据校验]]
+
+---
+
+💻 今日代码实战
+
+关联知识：[[Pydantic 数据校验]]、[[LLM messages 结构]]、[[JSON API]]、[[异常处理]]、[[环境变量与 API Key]]
+
+重写 app/schemas/chat.py（Day 9 完整版）
+
+"""
+对话接口的请求/响应模型（Day 9 扩展版）。
+
+相比 Day 8 的进化：
+    1. 增加 Field 校验（长度限制、正则、默认值）
+    2. 增加嵌套模型 Message（支持多轮对话）
+    3. 响应增加 usage 和 created_at 字段
+
+Pydantic 的核心价值在这里体现：
+    客户端传来的任何脏数据，都在进入路由函数之前被拦截，
+    业务逻辑拿到的永远是干净、类型正确的对象。
+"""
+
+from datetime import datetime, timezone
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+
+# ============================================================
+# 嵌套模型
+# ============================================================
+
+class Message(BaseModel):
+    """单条对话消息——对应 OpenAI-compatible API 的 messages 元素。
+
+    嵌套模型的意义：
+        一条消息有自己的结构和校验规则，
+        不能简单用 dict 代替——那样就没有类型安全了。
+    """
+
+    # Literal 限定 role 只能是这三个值，传别的直接 422
+    # 这比手写 if role not in [...] 更简洁、更可读
+    role: Literal["system", "user", "assistant"] = Field(
+        description="消息角色：system（系统指令）/ user（用户）/ assistant（助手）"
+    )
+
+    content: str = Field(
+        min_length=1,  # 内容不能为空字符串
+        max_length=10000,  # 单条消息最多 10000 字符，防止超大请求
+        description="消息内容",
+    )
+
+
+# ============================================================
+# 请求模型
+# ============================================================
+
+class ChatRequest(BaseModel):
+    """对话请求体。
+
+    示例（多轮对话）：
+    {
+        "messages": [
+            {"role": "system", "content": "你是 AI 助手"},
+            {"role": "user", "content": "你好"}
+        ],
+        "temperature": 0.7
+    }
+
+    校验规则：
+        - messages 至少 1 条，最多 50 条
+        - temperature 在 0-2 之间
+    """
+
+    messages: list[Message] = Field(
+        min_length=1,       # 至少 1 条消息
+        max_length=50,      # 最多 50 条，防止 messages 无限膨胀
+        description="完整对话消息列表",
+    )
+
+    temperature: float = Field(
+        default=0.7,        # 不传时默认 0.7
+        ge=0.0,             # greater than or equal：>= 0
+        le=2.0,             # less than or equal：<= 2
+        description="采样温度，0=确定性强，2=创造性强",
+    )
+
+    max_tokens: int = Field(
+        default=2048,
+        ge=1,
+        le=8192,
+        description="最大输出 token 数",
+    )
+
+    # 便捷属性：方便路由里快速取最后一条 user 消息
+    @property
+    def last_user_message(self) -> str:
+        """提取最后一条 user 消息内容（路由里常用）。"""
+        for msg in reversed(self.messages):
+            if msg.role == "user":
+                return msg.content
+        # 如果没有 user 消息，返回空字符串
+        # （严格来说应该报错，但这里先宽松处理，Day 3 会收紧）
+        return ""
+
+
+# ============================================================
+# 响应模型
+# ============================================================
+
+class TokenUsage(BaseModel):
+    """Token 用量统计——嵌套在响应里。
+
+    LLM API 返回的 usage 信息，帮调用方了解每次调用的消耗。
+    """
+    prompt_tokens: int = Field(ge=0, description="输入 token 数")
+    completion_tokens: int = Field(ge=0, description="输出 token 数")
+    total_tokens: int = Field(ge=0, description="总 token 数")
+
+
+class ChatResponse(BaseModel):
+    """对话响应体。
+
+    Day 8 只有 reply 和 model 两个字段，
+    Day 9 增加 usage（用量）和 created_at（时间戳）。
+    """
+
+    reply: str = Field(description="助手回复内容")
+
+    model: str = Field(
+        description="使用的模型名",
+    )
+
+    usage: TokenUsage | None = Field(
+        default=None,       # 默认 None，Day 3 接入 LLM 后会填充真实用量
+        description="Token 用量统计",
+    )
+
+    created_at: datetime = Field(
+        # 默认值用工厂函数——每次创建响应时自动取当前 UTC 时间
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="响应生成时间（UTC）",
+    )
+
+---
+
+更新 app/routers/chat.py
+
+"""
+对话路由（Day 9 版本）——使用扩展后的 Pydantic 模型。
+
+Day 9 进化：
+    1. 接收多轮消息（ChatRequest.messages）
+    2. 返回完整响应（含 usage、created_at）
+    3. 校验规则自动生效（非法输入返回 422）
+
+Day 3 会把 echo 换成真实 LLM 调用。
+"""
+
+from fastapi import APIRouter
+
+from app.schemas.chat import ChatRequest, ChatResponse, TokenUsage
+
+router = APIRouter(prefix="/chat", tags=["对话"])
+
+
+@router.post("", response_model=ChatResponse)
+async def chat(request: ChatRequest) -> ChatResponse:
+    """对话接口——接收多轮消息，返回回复。
+
+    Args:
+        request: 校验过的请求体（messages 已校验非空、role 合法、长度合规）。
+
+    Returns:
+        ChatResponse（含 reply、model、usage、created_at）。
+
+    关键点：
+        - request.messages 是 list[Message]，每个元素是 Message 对象
+        - 用 request.last_user_message 快速取最后一条用户消息
+        - Day 3 这里会调用真实的 LLMClient
+    """
+    # Day 9：echo 逻辑升级——回显最后一条用户消息 + 消息条数
+    last_msg = request.last_user_message
+    reply = f"收到 {len(request.messages)} 条消息，最后一条是：{last_msg}"
+
+    # 构造一个假的 usage（Day 3 换成真实 LLM 返回的 usage）
+    fake_usage = TokenUsage(
+        prompt_tokens=len(last_msg),  # 粗略估算：按字符数
+        completion_tokens=len(reply),
+        total_tokens=len(last_msg) + len(reply),
+    )
+
+    return ChatResponse(
+        reply=reply,
+        model="echo-model",  # Day 3 换成真实模型名
+        usage=fake_usage,
+    )
+
+---
+
+自动化接口测试
+
+先安装项目依赖：
+
+    .venv\Scripts\python.exe -m pip install -r requirements.txt
+
+然后在项目根目录运行测试：
+
+    .venv\Scripts\python.exe -m unittest discover -s tests -v
+
+测试通过 FastAPI TestClient 直接调用应用，不需要先启动 Uvicorn。成功请求应返回 200；缺字段、空数组、非法 role、空白消息、没有 user 消息、额外字段或参数越界应返回 422。
+
+需要手动观察 /docs 时，可在一个终端启动服务：
+
+    .venv\Scripts\python.exe -m uvicorn app.main:app --reload
+
+然后打开 http://127.0.0.1:8000/docs，分别发送合法和非法请求，检查响应状态码以及 detail 中指出的字段路径。
+
+---
+
+你需要观察什么
+
+1. Pydantic 的自动类型转换：把 temperature 传成字符串 "0.7"（而不是数字 0.7），看看是不是照样 200（Pydantic 自动转成 float）。再把 temperature 传成 "abc"，看看是不是 422（转不了就报错）。
+2. 422 错误体的 loc 结构：它用数组描述错误的精确位置——["body", "messages", 0, "role"] 是「请求体的 messages 数组第 0 个元素的 role 字段」。嵌套越深，loc 数组越长，但始终可读。
+3. Literal 的威力：role: Literal["system", "user", "assistant"] 把「合法值只有三个」直接写进类型。这不只是校验，还让 /docs 和 IDE 都能提示合法值——比手写 if 强太多。
+4. default_factory 的陷阱：created_at 用了 default_factory=lambda: datetime.now(timezone.utc)，而不是 default=datetime.now(...)。前者每次创建模型时调用，后者在类定义时就固定了——所有响应都是同一个时间戳。这是 Pydantic 新手最常见的坑之一。
+
+---
+
+可扩展任务
+
+1. 增加 model_config 禁止多余字段：在 ChatRequest 里加 model_config = ConfigDict(extra="forbid")，让客户端传未定义的字段也返回 422。观察加了之后传 {"messages": [...], "foo": "bar"} 会发生什么。
+2. 增加更复杂的校验：给 Message.content 加正则校验（比如禁止空白的纯空格字符串）。提示：Field(pattern=r"\S")，或者用 field_validator。
+3. 实现 field_validator：写一个自定义校验器，比如「如果 role 是 system，content 不能为空」这种跨字段逻辑。Field 只能做单字段校验，跨字段要 model_validator 或 field_validator。
+
+---
+
+🎯 每日自我验收题
+
+第 1 题（概念解释）： 为什么 FastAPI 校验失败返回的是 422 而不是 400？两者语义上有什么区别？Pydantic 的「自动类型转换」（把 "18" 转成 18）和「严格校验」（拒绝任何类型不符）相比，各有什么优劣？关联双链：[[Pydantic 数据校验]]、[[HTTP 状态码]]。
+
+---
+
+第 2 题（小实现 / 设计）： 定义一个新的 Pydantic 模型 ResumeRequest（为 Week 3 简历解析做准备），要求：
+
+- name: str（姓名，1-50 字符）
+- email: str（邮箱，用 pattern 校验邮箱格式）
+- skills: list[str]（技能列表，至少 1 项，每项 1-30 字符）
+- years_experience: int（工作年限，0-50）
+- 用 Field 的 description 给每个字段写清楚说明
+- 写一个测试：非法邮箱、空 skills 列表、超范围年限分别返回 422
+
+---
+
+第 3 题（代码改错 / Bug 排查）： 下面这个 Pydantic 模型有一个隐蔽的 bug，会导致所有实例共享同一个默认值。找出来并说明修复方案：
+
+from datetime import datetime
+from pydantic import BaseModel, Field
+
+class Event(BaseModel):
+    name: str
+    # 下面这行的默认值有问题
+    created_at: datetime = datetime.now()
+
+import time
+time.sleep(2)
+e2 = Event(name="事件2")
+
+print(e1.created_at == e2.created_at)  # 输出 True，但预期应该是 False
+
+提示：注意 datetime.now() 是在什么时机被调用的——类定义时还是实例创建时？关联双链：[[Pydantic 数据校验]]。

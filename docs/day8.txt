@@ -1,0 +1,617 @@
+ Week 2：FastAPI 后端骨架
+
+1. 核心技术拆解
+
+技术点 A：[[FastAPI 项目结构]] + [[FastAPI 路由]]
+
+学什么： FastAPI 的分层结构（main.py / routers/ / schemas/ / services/ / models/）、路由装饰器（@app.get / @app.post）、路径参数与查询参数、async def 路由。
+
+为什么对 Agent 开发重要： Week 3-8 的 AI-Interview 主项目就是一个 FastAPI 服务。简历解析、岗位匹配、RAG 出题、AI 评分——每个模块都是一个路由或一组路由。Week 1 的 LLMClient 是「可被调用的库」，Week 2 要把它变成「可被 HTTP 调用的服务」。
+
+本周用在哪里： 搭建 agent-backend 项目骨架，把 Week 1 的 LLM 调用能力包成 HTTP API。
+
+常见错误认知：
+- 把 FastAPI 当 Flask 写——所有逻辑塞在路由函数里，路由函数 200 行
+- async def 路由里调用同步阻塞函数（httpx.Client），把事件循环卡死
+- 不用 Pydantic 校验，手动 request.json() 然后一堆 if 判断字段存在性
+
+关联笔记：[[FastAPI 项目结构]]、[[FastAPI 路由]]、[[Pydantic 数据校验]]、[[Python 异步编程]]
+
+---
+
+技术点 B：[[Pydantic 数据校验]]
+
+学什么： BaseModel、字段类型注解、Field 校验（min_length、ge、正则）、嵌套模型、model_dump()。
+
+为什么对 Agent 开发重要： Agent 的输入输出都是结构化数据——简历解析要输出候选人画像（dict），岗位匹配要输出匹配结果（dict）。Pydantic 把这些「自由格式的 dict」变成「有类型、有校验、有默认值的模型」。它还是 Function Calling 的 JSON Schema 自动生成基础。
+
+本周用在哪里： 定义请求/响应模型（ChatRequest、ChatResponse），校验客户端传来的数据。
+
+常见错误认知：
+- 把 Pydantic 模型当普通 dict 用，不理解 model_validate / model_dump 的转换
+- 校验规则全靠 if 手写，不用 Field 声明式校验
+- 响应模型里泄露敏感字段（如密码 hash）
+
+关联笔记：[[Pydantic 数据校验]]、[[JSON API]]、[[异常处理]]
+
+---
+
+技术点 C：SQLAlchemy / Tortoise ORM + [[PostgreSQL 数据建模]]
+
+学什么： ORM 对象关系映射、模型定义（表结构）、Session 管理、增删改查。
+
+为什么对 Agent 开发重要： Week 1 用 JSON 存历史，但 Agent 项目要存用户、会话、消息、面试记录——这些需要关系型数据库。ORM 让你用 Python 类操作数据库，不用手写 SQL。
+
+本周用在哪里： 把对话历史从 JSON 迁移到 SQLite（本地开发），定义 User、Conversation、Message 三个表。
+
+常见错误认知：
+- 以为 ORM 能完全替代 SQL 理解——性能问题、复杂查询还是得懂 SQL
+- 不管理 Session 生命周期，连接泄漏
+- 同步 ORM 在 async def 路由里阻塞
+
+关联笔记：[[PostgreSQL 数据建模]]、[[Python 项目分层]]
+
+---
+
+2. 每日精细化学习路径
+
+Day 1（Day 8）：FastAPI 项目结构与首个路由
+
+关联知识：[[FastAPI 项目结构]]、[[FastAPI 路由]]、[[Pydantic 数据校验]]
+
+学习内容：FastAPI 安装、uvicorn 启动、分层目录结构、@app.get / @app.post、路径参数、/health 健康检查、自动文档 /docs。
+
+今天写什么：创建 agent-backend 项目，写第一个 GET /health 和 POST /chat 路由（先返回假数据）。
+
+验收标准：uvicorn main:app --reload 启动成功，浏览器打开 /docs 看到自动文档。
+
+Day 2（Day 9）：Pydantic 请求/响应模型
+
+关联知识：[[Pydantic 数据校验]]、[[JSON API]]
+
+学习内容：BaseModel、请求模型（ChatRequest）、响应模型（ChatResponse）、Field 校验、嵌套模型、422 错误理解。
+
+今天写什么：定义 schemas/chat.py，把 /chat 路由改成接收校验过的 ChatRequest，返回 ChatResponse。
+
+验收标准：发合法请求返回 200，发非法请求（缺字段、类型错）返回 422。
+
+Day 3（Day 10）：数据库接入（SQLAlchemy + SQLite）
+
+关联知识：[[PostgreSQL 数据建模]]、[[Python 项目分层]]
+
+学习内容：SQLAlchemy 引擎、Session、模型定义、建表、迁移概念。
+
+今天写什么：定义 models/（User、Conversation、Message），连接 SQLite，写脚本建表。
+
+验收标准：能通过 ORM 插入和查询一条记录。
+
+Day 4（Day 11）：CRUD 与分页
+学习内容：Create/Read/Update/Delete 四类接口、分页（limit/offset）、统一响应格式。
+
+今天写什么：实现会话和消息的 CRUD 接口，分页查询历史消息。
+
+验收标准：能用 curl 或 /docs 完成增删改查，分页参数生效。
+
+Day 5（Day 12）：统一响应与异常处理
+
+关联知识：[[异常处理]]、[[HTTP 状态码]]、[[自定义异常类]]
+
+学习内容：统一响应包装（code/message/data）、全局异常处理器、自定义业务异常。
+
+今天写什么：定义 utils/response.py，注册 @app.exception_handler，把业务错误转成规范 JSON。
+
+验收标准：业务异常返回统一的 JSON 结构，错误码和状态码对应。
+
+Day 6（Day 13）：JWT 登录认证
+
+关联知识：[[环境变量与 API Key]]、[[HTTP 请求结构]]
+
+学习内容：密码哈希、JWT 签发与校验、依赖注入（Depends）、OAuth2PasswordBearer。
+
+今天写什么：实现 /auth/register 和 /auth/login，用 Depends(get_current_user) 保护接口。
+
+验收标准：登录拿到 token，带 token 能访问保护接口，不带 token 返回 401。
+
+Day 7（Day 14）：日志、配置与测试
+
+关联知识：[[README 编写]]、[[pytest 基础]]、[[Git 提交规范]]
+
+学习内容：日志配置、配置管理（pydantic-settings）、FastAPI 测试（TestClient）。
+
+今天写什么：加日志中间件，用 TestClient 写路由测试，完善 README，复盘。
+
+验收标准：至少 3 个接口测试通过，README 写清架构和启动方式。
+
+---
+
+3. 本周核心产出物
+
+项目：agent-backend（Agent 后端服务骨架）
+
+agent-backend/
+├── app/
+│   ├── __init__.py
+│   ├── main.py            # FastAPI 入口
+│   ├── config.py          # 配置（pydantic-settings）
+│   ├── database.py        # SQLAlchemy 引擎 + Session
+│   ├── routers/
+│   │   ├── health.py      # 健康检查
+│   │   ├── chat.py        # 对话接口
+│   │   ├── conversations.py # 会话 CRUD
+│   │   └── auth.py        # 认证
+│   ├── schemas/           # Pydantic 模型
+│   ├── models/            # ORM 模型
+│   ├── services/          # 业务逻辑
+│   └── utils/             # 工具（响应、异常）
+├── tests/
+├── .env.example
+├── .gitignore
+├── README.md
+└── requirements.txt
+
+简历话术： 基于 FastAPI 搭建 Agent 后端服务骨架，采用分层架构（routers/services/models/schemas），集成 Pydantic 请求校验、SQLAlchemy 持久化、JWT 认证、统一异常处理和自动 API 文档，为 AI-Interview 项目提供可复用的后端基础设施。
+
+面试可讲亮点： 分层架构设计、Pydantic 自动校验与 422、JWT 无状态认证、依赖注入解耦、自动文档。
+
+推荐 Obsidian 笔记： [[FastAPI 项目结构]]、[[Pydantic 数据校验]]、[[PostgreSQL 数据建模]]、[[JWT 认证]]
+
+---
+
+4. 面试仿真模拟
+
+Q1：FastAPI 和 Flask 有什么区别，为什么选 FastAPI？
+
+▎ 原生 async 支持（Flask 3 才有）、自动 API 文档（/docs）、Pydantic 集成校验、依赖注入系统。Agent 后端要大量并发调用 LLM，异步是刚需。
+
+Q2：你的 async def 路由里能直接调用同步的数据库操作吗？
+
+▎ 不能直接调同步阻塞 ORM，会卡死事件循环。要用 async 的 ORM（Tortoise）或把同步操作丢到线程池（run_in_threadpool），否则一个慢查询拖垮整个服务。
+
+Q3：JWT 为什么是「无状态」认证？和 session 比优劣？
+
+▎ JWT 把用户信息编码在 token 里，服务端不存状态，天然适合水平扩展。缺点是无法主动失效（除非加黑名单），泄露后有效期内容易被滥用。
+
+Q4：你怎么处理「业务错误」和「HTTP 错误」的关系？
+
+▎ 用自定义业务异常 + 全局 exception_handler，把业务语义（如「余额不足」）映射成规范的 HTTP 状态码和 JSON 结构，而不是到处 raise HTTPException。
+
+---
+
+5. 避坑指南
+
+┌────────────────────────┬───────────────────────┬─────────────────────────────────────────────────────────┐
+│           坑           │     为什么容易踩      │                        正确做法                         │
+├────────────────────────┼──────
+│ 所有逻辑写进路由函数   │ 图快，省得建目录      │ 路由只做「接收→校验→调 service→返回」，逻辑在 services/ │
+├────────────────────────┼───────────────────────┼─────────────────────────────────────────────────────────┤
+│ async def 里调同步阻塞 │ 以为加了 async 就快了 │ 同步阻塞操作用 run_in_threadpool 或换 async ORM         │
+├────────────────────────┼───────────────────────┼─────────────────────────────────────────────────────────┤
+│ 不用 Pydantic 校验     │ 手写 if 觉得灵活      │ 用 BaseModel + Field，让 422 自动处理                   │
+├────────────────────────┼───────────────────────┼─────────────────────────────────────────────────────────┤
+│ 响应泄露敏感字段       │ 直接返回 ORM 对象     │ 用 response_model 定义响应，model_dump 控制字段         │
+├────────────────────────┼───────────────────────┼─────────────────────────────────────────────────────────┤
+│ 数据库连接不管理       │ 忘了 close / 每次新建 │ 用依赖注入管理 Session 生命周期                         │
+├────────────────────────┼───────────────────────┼─────────────────────────────────────────────────────────┤
+│ 不做统一响应           │ 各接口返回格式不一    │ Day 5 就定好 {code, message, data} 结构                 │
+└────────────────────────┴───────────────────────┴─────────────────────────────────────────────────────────┘
+
+---
+
+---
+
+📅 Week 2 / Day 1（Day 8）：FastAPI 项目结构与首个路由
+
+📌 今日核心死磕
+
+1. [[FastAPI 项目结构]] — 从「脚本」到「服务」的第一跳
+
+它是什么： FastAPI 项目不是单文件，而是一棵分层目录树：main.py（入口）、routers/（路由层）、schemas/（数据模型）、services/（业务逻辑）、models/（数据库模型）、utils/（工具）。
+
+它解决 Agent 工程里的什么痛点： Week 1 的 main.py 是「命令行入口」，用户本地敲键盘。Week 2 的 main.py 是「HTTP 服务入口」，客户端（浏览器、curl、未来的前端、未来的 Agent）通过 HTTP 调你。这个转变要求结构更严谨——因为服务会一直跑、多人调用、不能随便崩。分层结构让每个请求的处理路径清晰可追踪。
+
+今天为什么必须学： 今天要搭 agent-backend 项目骨架。骨架搭得对不对，决定了 Week 3-8 往里面加简历解析、RAG、Agent 时是「顺畅叠加」还是「不断返工」。
+
+新手最容易踩什么坑：
+- 把 FastAPI 应用写在单个 main.py 里，路由、逻辑、模型全混——Week 3 加 RAG 时直接爆炸
+- 不理解 uvicorn 和 main:app 的冒号语法——main 是文件名，app 是里面的变量名
+- 启动命令用 python main.py（这是 Flask 的启动方式），FastAPI 要用 uvicorn main:app --reload
+
+---
+
+2. [[FastAPI 路由]] — HTTP 动词到函数的映射
+
+它是什么： 路由装饰器（@app.get("/health")）把「HTTP 请求」映射到「Python 函数」。路径参数（/users/{id}）从 URL 提取变量，查询参数（/items?page=2）从问号后解析，请求体（POST 的 body）通过 Pydantic 模型接收。
+
+它解决 Agent 工程里的什么痛点： Agent 后端对外暴露的能力就是一组路由——POST /chat（对话）、POST /resume/parse（简历解析）、GET /jobs/match（岗位匹配）。路由设计就是 API 设计，直接决定前端和别的 Agent 怎么用你的服务。
+
+今天为什么必须学： 今天写 GET /health（健康检查）和 POST /chat（对话）。/health 是所有服务的标配——负载均衡器和监控系统靠它判断「服务还活着吗」；/chat 是第一个业务路由，把 Week 1 的 LLM 能力暴露成 HTTP。
+
+新手最容易踩什么坑：
+- 路由函数名写 async def chat() 但里面 time.sleep()——阻塞事件循环
+- 路径参数 {id} 和查询参数 ?id=1 分不清，混用导致路由匹配失败
+- 不写 response_model，返回什么全靠自觉——文档里类型显示为 unknown
+
+---
+
+🎯 6 小时精细化路线
+
+上午 2 小时：看文档 + 最小验证（09:00–11:00）
+
+┌──────┬───────────────────────────────────────┬─────────────────────────────────┬───────────────────────────────┐
+│ 时间 │               具体任务                │            预期产出             │          成功检查点           │
+├──────┼───────────────────────────────────────┼─────────────────────────────────┼───────────────────────────────┤
+│ 40   │ 读 FastAPI 官方文档的 First Steps 和  │ 理解 uvicorn                    │ 本地跑通官方最小示例          │
+│ min  │ Path Parameters 两节                  │ 启动、路由装饰器、路径参数      │                               │
+├──────┼───────────────────────────────────────┼─────────────────────────────────┼───────────────────────────────┤
+│ 30   │ 读 uvicorn 文档，理解                 │ 理解热重载和监听配置            │ 改代码保存后服务自动重启      │
+│ min  │ --reload、--host、--port 参数         │                                 │                               │
+├──────┼───────────────────────────────────────┼─────────────────────────────────┼───────────────────────────────┤
+│ 30   │ 打开 FastAPI 自动文档                 │ 理解 Swagger UI 的交互          │ 在 /docs                      │
+│ min  │ /docs，点开每个接口试调用             │                                 │ 里成功发一次请求并看到响应    │
+├──────┼───────────────────────────────────────┼─────────────────────────────────┼───────────────────────────────┤
+│ 20   │ 研究路径参数 vs 查询参数的 URL        │ 理解 {id} 和 ?id= 的区别        │ 手写 3 个示例 URL             │
+│ min  │ 语法差异                              │                                 │ 并说明各自参数                │
+└──────┴───────────────────────────────────────┴─────────────────────────────────┴───────────────────────────────┘
+
+关联双链：[[FastAPI 项目结构]]、[[FastAPI 路由]]、[[RESTful API 设计]]
+
+---
+
+下午 3 小时：搭骨架 + 写路由（13:00–16:00）
+
+┌──────┬────────────────────────────────────────┬────────────────────────┬───────────────────────────────────────┐
+│ 时间 │                具体任务                │        预期产出        │              成功检查点               │
+├──────┼────────────────────────────────────────┼────────────────────────┼───────────────────────────────────────┤
+│ 40   │ 创建 agent-backend/                    │                        │ tree 看到                             │
+│ min  │ 项目，建分层目录结构 + 虚拟环境 +      │ 完整骨架目录           │ routers/schemas/services/models/utils │
+│      │ 装依赖                                 │                        │                                       │
+├──────┼────────────────────────────────────────┼────────────────────────┼───────────────────────────────────────┤
+│ 50   │ 写 app/main.py：创建 FastAPI           │ GET /health 返回       │ 浏览器访问                            │
+│ min  │ 实例，挂载健康检查路由                 │ {"status": "ok"}       │ http://127.0.0.1:8000/health 看到 ok  │
+├──────┼────────────────────────────────────────┼────────────────────────┼───────────────────────────────────────┤
+│ 50   │ 写 app/routers/chat.py：POST /chat     │ 能接收请求体并返回响应 │ curl 或 /docs 调 POST /chat 成功      │
+│ min  │ 路由（先返回假数据）                   │                        │                                       │
+├──────┼────────────────────────────────────────┼────────────────────────┼───────────────────────────────────────┤
+│ 40   │ 写 app/schemas/chat.py：定义           │ 请求有校验             │ 发缺字段的请求返回 422                │
+│ min  │ ChatRequest/ChatResponse（Pydantic）   │                        │                                       │
+└──────┴────────────────────────────────────────┴────────────────────────┴───────────────────────────────────────┘
+
+关联双链：[[FastAPI 路由]]、[[Pydantic 数据校验]]、[[Python 虚拟环境]]
+
+---
+
+晚上 1 小时：整理 + 笔记 + 自测（19:00–20:00）
+
+┌──────┬───────────────────────────────────────────┬────────────────────┬────────────────────────────────────────┐
+│ 时间 │                 具体任务                  │      预期产出      │               成功检查点               │
+├──────┼───────────────────────────────────────────┼────────────────────┼────────────────────────────────────────┤
+│ 20   │ 给代码补中文注释，画一张「请求 → main →   │ 理解请求生命周期   │ 能说清一个请求从进入到返回经过了哪些层 │
+│ min  │ router → 函数」的调用流程图               │                    │                                        │
+├──────┼───────────────────────────────────────────┼────────────────────┼────────────────────────────────────────┤
+│ 15   │ 整理「FastAPI 分层」和「路由装饰器」笔记  │ 两个知识点笔记     │ 每个笔记有 1 个代码示例                │
+│ min  │                                           │                    │                                        │
+├──────┼───────────────────────────────────────────┼────────────────────┼────────────────────────────────────────┤
+│ 10   │ 自测 3 道题                               │ 每题有答案草稿     │ 不确定的用 ? 标记                      │
+│ min  │                                           │                    │                                        │
+├──────┼───────────────────────────────────────────┼────────────────────┼────────────────────────────────────────┤
+│ 10   │ git init + 首次 commit                    │ agent-backend      │ git log 显示 1 条 commit               │
+│ min  │                                           │ 有版本控制         │                                        │
+└──────┴───────────────────────────────────────────┴────────────────────┴────────────────────────────────────────┘
+
+关联双链：[[Git 提交规范]]、[[FastAPI 项目结构]]
+
+---
+
+💻 今日代码实战
+
+关联知识：[[FastAPI 项目结构]]、[[FastAPI 路由]]、[[Pydantic 数据校验]]、[[Python 虚拟环境]]、[[RESTful API 设计]]
+
+项目初始化
+
+# 1. 创建新项目（Week 2 的新项目，和 week1_llm_cli 平级）
+mkdir agent-backend
+cd agent-backend
+
+# 2. 虚拟环境
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+# macOS/Linux: source .venv/bin/activate
+
+# 3. 安装依赖
+pip install fastapi "uvicorn[standard]" pydantic pydantic-settings
+
+# 4. 生成 requirements.txt
+pip freeze > requirements.txt
+
+# 5. 建目录
+mkdir app
+mkdir app/routers app/schemas app/services app/models app/utils
+mkdir tests
+
+# 6. 初始化 git
+git init
+
+---
+
+app/__init__.py
+
+"""agent-backend 后端服务包。
+
+Week 2 目标：把 Week 1 的 LLM 调用能力包装成 HTTP API 服务。
+分层结构：
+    routers/  路由层——接收请求、校验、调用 service、返回响应
+    schemas/  数据模型层——Pydantic 请求/响应模型
+    services/ 业务逻辑层——具体业务（调 LLM、查数据库）
+    models/   数据库模型层——ORM 表结构
+    utils/    工具层——统一响应、异常等
+"""
+
+---
+
+app/main.py
+
+"""
+FastAPI 应用入口。
+
+启动方式（重要，不是 python main.py）：
+    uvicorn app.main:app --reload
+
+    app.main → Python 模块路径（app/main.py）
+    app     → main.py 里的 FastAPI 实例变量名
+
+FastAPI 和 Week 1 CLI 的本质区别：
+    Week 1 的 main.py 是「命令行程序」，用户敲键盘触发。
+    这里的 main.py 是「HTTP 服务」，客户端通过 HTTP 请求触发。
+    服务会常驻运行，持续监听 8000 端口。
+"""
+
+from fastapi import FastAPI
+
+from app.routers import health, chat
+
+# 创建 FastAPI 应用实例
+# title 和 version 会显示在自动文档 /docs 里
+app = FastAPI(
+    title="Agent Backend",
+    description="AI Agent 后端服务骨架（Week 2）",
+    version="0.1.0",
+)
+
+# 挂载路由——把各模块的路由注册到应用上
+# 每个 router 有自己的 prefix 和 tags，见各自文件
+app.include_router(health.router)
+app.include_router(chat.router)
+
+
+# 根路径——访问 http://127.0.0.1:8000/ 时的提示
+@app.get("/")
+async def root() -> dict[str, str]:
+    """根路由——返回欢迎信息，指向文档地址。
+
+    注意：
+        - async def：FastAPI 原生支持异步路由
+        - -> dict[str, str]：返回值类型注解，会自动写入文档
+    """
+    return {"message": "Agent Backend 已启动，访问 /docs 查看接口文档"}
+
+---
+
+app/routers/__init__.py
+
+"""路由层——各业务模块的路由集中在这里。
+
+每个文件定义一个 APIRouter，然后在 main.py 里 include_router 挂载。
+这样 main.py 保持简洁，业务路由各自独立，方便扩展。
+"""
+
+---
+
+app/routers/health.py
+
+"""
+健康检查路由。
+
+为什么每个服务都要有 /health：
+    1. 监控系统定时 ping 它，判断服务是否存活
+    2. 负载均衡器根据它决定是否把流量导向这个实例
+    3. 部署时（Week 8 Docker）用它做容器健康检查
+"""
+
+from fastapi import APIRouter
+
+# prefix 让这个 router 下所有路由都带 /health 前缀
+# tags 让这些接口在 /docs 里分组显示
+router = APIRouter(prefix="/health", tags=["健康检查"])
+
+
+@router.get("")
+async def health_check() -> dict[str, str]:
+    """健康检查——返回服务状态。
+
+    返回 200 表示服务正常。如果服务挂了，这个接口就没响应了。
+    后续可以扩展成检查数据库、LLM API 是否可用。
+    """
+    return {"status": "ok", "service": "agent-backend"}
+
+---
+
+app/schemas/__init__.py
+
+"""数据模型层——Pydantic 请求/响应模型。
+
+Pydantic 模型的作用：
+    1. 自动校验请求体——字段类型不对、缺少必填字段 → 自动返回 422
+    2. 生成 API 文档——/docs 里能看到请求/响应的完整结构
+    3. 类型安全——路由函数拿到的是校验
+"""
+
+---
+
+app/schemas/chat.py
+
+"""
+对话接口的请求/响应模型。
+
+Day 1 版本先用最简单的字段，Day 2 会扩展 Field 校验和嵌套模型。
+"""
+
+from pydantic import BaseModel
+
+
+class ChatRequest(BaseModel):
+    """对话请求体。
+
+    客户端 POST /chat 时，body 必须是这个结构：
+    {"message": "你好"}
+
+    如果缺少 message 字段或类型不是 str，FastAPI 自动返回 422。
+    """
+    message: str
+class ChatResponse(BaseModel):
+    """对话响应体。
+
+    服务端返回给客户端的结构。Day 3 接入 LLM 后会加更多字段
+    （如 usage、model 等）。
+    """
+    reply: str
+    model: str = "echo"  # Day 1 先返回 echo，Day 3 换成真实模型名
+
+---
+
+app/routers/chat.py
+
+"""
+对话路由。
+
+Day 1 版本：先返回 echo（把用户消息原样返回），验证请求/响应链路通了。
+Day 3 会把 echo 换成真实的 LLM 调用（复用 Week 1 的 LLMClient）。
+"""
+
+from fastapi import APIRouter
+
+from app.schemas.chat import ChatRequest, ChatResponse
+
+router = APIRouter(prefix="/chat", tags=["对话"])
+
+
+@router.post("", response_model=ChatResponse)
+async def chat(request: ChatRequest) -> ChatResponse:
+    """对话接口——接收消息，返回回复。
+
+    Args:
+        request: 校验过的请求体（Pydantic 自动解析和校验）。
+
+    Returns:
+        ChatResponse 对象（FastAPI 自动序列化成 JSON）。
+
+    关键点：
+        - response_model=ChatResponse：告诉 FastAPI 返回类型，
+          文档里会显示，多余的字段也会被过滤
+        - request.message：因为声明了 ChatRequest 类型，
+          FastAPI 已经帮我们解析并校验了 body，这里直接用属性
+    """
+    # Day 1：echo 逻辑（回显用户输入）
+    # Day 3：换成 client.chat(request.message)
+    reply = f"你刚才说的是：{request.message}"
+
+    return ChatResponse(reply=reply)
+
+---
+
+运行方式
+
+# 1. 确保在 agent-backend 目录，虚拟环境已激活
+
+# 2. 启动服务（注意：不是 python main.py）
+uvicorn app.main:app --reload
+
+# 3. 看到类似输出说明启动成功：
+#    INFO:     Uvicorn running on http://127.0.0.1:8000
+#    INFO:     Application startup complete.
+
+# 4. 浏览器打开自动文档
+#    http://127.0.0.1:8000/docs
+#    → 在 /chat 接口点 "Try it out"，输入 {"message": "你好"}，点 Execute
+
+# 5. 或命令行测试
+curl -X POST http://127.0.0.1:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "你好"}'
+# 预期返回：{"reply": "你刚才说的是：你好", "model": "echo"}
+
+# 6. 测试健康检查
+curl http://127.0.0.1:8000/health
+# 预期返回：{"status": "ok", "service": "agent-backend"}
+
+# 7. 测试校验（缺 message 字段）
+curl -X POST http://127.0.0.1:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{}'
+# 预期返回 422，带详细的校验错误信息
+
+---
+
+你需要观察什么
+
+1. uvicorn app.main:app --reload 的冒号语法：app.main 是模块路径（app/main.py），app 是那个文件里的 FastAPI 实例名。--reload 让你改代码保存后自动重启，开发必备。
+2. /docs 自动文档的威力：打开 http://127.0.0.1:8000/docs，能看到所有接口、每个接口的请求/响应结构、甚至能直接在页面上「Try it out」发请求。这是 FastAPI 秒杀 Flask 的功能之一——文档和代码同步，不会过时。
+3. 422 校验错误：发一个缺 message 字段的 POST 请求，看返回的 422 错误体。里面有精确的字段定位——这是 Pydantic 自动生成的，Day 2 会深入。
+4. response_model 的作用：把 ChatResponse 的 model 字段改成 model="echo"，观察文档里响应结构的变化。这个声明让返回类型有约束，多余字段会被自动过滤。
+
+---
+
+可扩展任务
+
+1. 增加版本化路由前缀：把 /chat 改成 /api/v1/chat，观察 /docs 里路径的变化。版本化是生产 API 的标准做法，Week 3 主项目会用 /api/v1/ 前缀。
+2. 增加一个 GET /chat/health 端点：返回当前 LLM 服务是否可用（Day 1 先返回静态 true，Day 3 改成真实探测）。
+3. 用 --host 0.0.0.0 启动：让局域网其他设备也能访问你的服务。观察 --host 参数的作用，理解为什么默认 127.0.0.1 只允许本机访问。
+
+---
+
+🎯 每日自我验收题
+
+第 1 题（概念解释）： FastAPI 的 async def 路由和普通 def 路由有什么区别？如果一个 async def 路由里调用了 time.sleep(5)（同步阻塞），会发生什么？这对并发处理请求有什么影响？关联双链：[[FastAPI 路由]]、[[Python 异步编程]]。
+
+---
+
+第 2 题（小实现 / 设计）： 给 chat.py 增加一个 GET /chat/history 端点，返回一个固定的历史消息列表（Day 1 先写死，Day 4 接数据库）。要求：
+
+- 返回结构是 ChatResponse 的列表（list[ChatResponse]）
+- 用 response_model=list[ChatResponse] 声明返回类型
+- 至少返回 2 条假的对话记录
+- 在 /docs 里验证返回结构正确显示为数组
+
+---
+
+第 3 题（代码改错 / Bug 排查）： 下面这段 FastAPI 代码有一个 bug，会导致接口无法正常返回，找出来并修复：
+
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.post("/chat")
+async def chat(message: str):
+    # 这里声明 message 是 str 类型
+    return {"reply": message}
+
+# 客户端调用：
+# curl -X POST http://127.0.0.1:8000/chat \
+#   -H "Content-Type: application/js
+#   -d '{"message": "你好"}'
+
+提示：注意参数声明 message: str 会被 FastAPI 解析成什么（查询参数还是请求体？），以及客户端发的是 JSON body。关联双链：[[FastAPI 路由]]、[[Pydantic 数据校验]]。
+
+---
+
+📥 明日同步接口
+
+请你明天把下面这段填好发给我：
+
+【Day 8 学习反馈】
+1. 今天实际学习时长：
+2. 完成了哪些代码/文件：
+3. 哪个概念最清楚了：
+4. 哪个概念还没懂：
+5. 卡住的 Bug / 报错全文：
+6. 自我验收题完成情况：
+7. 明天希望：正常推进 / 放慢复习 / 加难扩展

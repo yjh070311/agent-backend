@@ -1,0 +1,442 @@
+📅 Week 2 / Day 3（Day 10）：数据库接入（SQLAlchemy + SQLite）
+
+📌 今日核心死磕
+
+1. [[PostgreSQL 数据建模]] + ORM — 从 JSON 文件到关系型数据库
+
+它是什么： ORM（对象关系映射）让你用 Python 类操作数据库表——User 类对应 users 表，user.name = "张三" 对应 UPDATE users SET name=...。SQLAlchemy 是 Python 最主流的 ORM。表之间的关系（一对多、多对多）用外键表达：一个 User 有多个 Conversation，一个 Conversation 有多条 Message。
+
+它解决 Agent 工程里的什么痛点： Week 1 用 JSON 存对话历史——单机、单文件、查询要全读进内存、并发写会冲突。Agent 项目要存用户、会话、消息、面试记录，还要按用户查、按时间排序、分页——这些是数据库的看家本领。JSON 文件在数据量变大、多人同时访问时立刻崩溃。
+
+今天为什么必须学： 今天把 Week 1 的 JSON 历史替换成 SQLite 数据库，定义 User、Conversation、Message 三张表。这个「用户→会话→消息」的三层结构是 Week 3-8 AI-Interview 的持久化地基——面试记录、简历、评分报告都挂在类似的结构上。
+
+新手最容易踩什么坑：
+- 混淆「模型类」和「表」——class User 是模型，users 是表名，一个模型实例是表里的一行
+- 不理解 Session（会话）——它不是 HTTP session，是「数据库操作的工作区」，忘 commit 数据就没了
+- 外键关系只定义了一边（Conversation.user_id 有，但 User.conversations 没写 relationship），反向查询就做不了
+
+---
+
+2. [[Python 项目分层]] 的数据库落地 — database.py 的职责
+
+它是什么： 数据库相关的三件事要分离：引擎（engine，管理连接）、会话工厂（SessionLocal，每次请求一个独立会话）、模型基类（Base，所有 ORM 模型继承它）。这三者集中在 database.py 一个文件。
+
+它解决 Agent 工程里的什么痛点： 如果每个路由都自己 create_engine() 建连接，会有一堆连接泄漏和配置重复。集中管理后，连接池配置只写一次，路由通过依赖注入拿 Session，用完自动关闭——这是 FastAPI 的标准数据库模式。
+
+今天为什么必须学： 今天要写 database.py，这是 Week 2 后续所有数据库操作的基础。写错了（比如 Session 不关闭），Week 4-7 数据量上来后就会连接泄漏、服务假死。
+
+新手最容易踩什么坑：
+- 全局共用一个 Session，并发请求互相污染——必须「每次请求一个新 Session」
+- 忘了 session.close()，连接池耗尽——正确做法是用 Depends 依赖注入 + finally 关闭
+- SQLite 和 PostgreSQL 的差异不重视——SQLite 是单文件，PostgreSQL 是服务器；今天用 SQLite 本地开发，Week 5 会切 PostgreSQL
+
+---
+
+🎯 6 小时精细化路线
+
+上午 2 小时：看文档 + 理解关系型设计（09:00–11:00）
+
+┌─────┬───────────────────────────────────────┬──────────────────────────────────────────┬───────────────────────┐
+│ 时  │               具体任务                │                 预期产出                 │      成功检查点       │
+│ 间  │                                       │                                          │                       │
+├─────┼───────────────────────────────────────┼──────────────────────────────────────────┼───────────────────────┤
+│ 40  │ 读 SQLAlchemy 2.0 官方文档的 ORM      │ 理解 declarative_base、sessionmaker、cre │ 跑通官方最小示例      │
+│ min │ Quick Start                           │ ate_engine                               │                       │
+├─────┼───────────────────────────────────────┼──────────────────────────────────────────┼───────────────────────┤
+│ 30  │ 理解关系型数据库的「一对多」和「外键  │ 能画出 User→Conversation→Message 的 ER   │ 说出外键在哪张表、指  │
+│ min │ 」概念                                │ 图                                       │ 向谁                  │
+├─────┼───────────────────────────────────────┼──────────────────────────────────────────┼───────────────────────┤
+│ 30  │ 读 FastAPI 官方文档的 SQLAlchemy      │ 理解 get_db 依赖注入模式                 │ 写出 get_db           │
+│ min │ 集成章节                              │                                          │ 的标准写法            │
+├─────┼───────────────────────────────────────┼──────────────────────────────────────────┼───────────────────────┤
+│ 20  │ 对比 SQLite 和 PostgreSQL             │ 理解为什么开发用 SQLite、生产用          │ 能说出两者 2          │
+│ min │ 的差异（连接方式、部署方式）          │ PostgreSQL                               │ 个关键差异            │
+└─────┴───────────────────────────────────────┴──────────────────────────────────────────┴───────────────────────┘
+
+关联双链：[[PostgreSQL 数据建模]]、[[Python 项目分层]]、[[Python 虚拟环境]]
+
+---
+
+下午 3 小时：定义模型 + 建表 + CRUD（13:00–16:00）
+
+┌──────┬──────────────────────────────────────────────────────┬──────────────────┬────────────────────────────────┐
+│ 时间 │                       具体任务                       │     预期产出     │           成功检查点           │
+├──────┼──────────────────────────────────────────────────────┼──────────────────┼────────────────────────────────┤
+│ 40   │ 写                                                   │ 数据库基础设施   │ get_db 能正常 yield session    │
+│ min  │ app/database.py：engine、SessionLocal、Base、get_db  │                  │ 并自动关闭                     │
+├──────┼──────────────────────────────────────────────────────┼──────────────────┼────────────────────────────────┤
+│ 50   │ 写 app/models/：User、Conversation、Message 三个模型 │ 三张表 +         │ Base.metadata.create_all()     │
+│ min  │                                                      │ 外键关系         │ 建表成功                       │
+├──────┼──────────────────────────────────────────────────────┼──────────────────┼────────────────────────────────┤
+│ 50   │ 写建表脚本 init_db.py                                │ 一键初始化数据库 │ 运行后 SQLite                  │
+│ min  │                                                      │                  │ 文件生成，三张表都在           │
+├──────┼──────────────────────────────────────────────────────┼──────────────────┼────────────────────────────────┤
+│ 40   │ 写一个临时 CRUD                                      │ 全链路 ORM 操作  │ 能按外键关系加载完整数据       │
+│ min  │ 验证脚本，插入用户→会话→消息，再查出来               │                  │                                │
+└──────┴──────────────────────────────────────────────────────┴──────────────────┴────────────────────────────────┘
+
+关联双链：[[PostgreSQL 数据建模]]、[[RESTful API 设计]]
+
+---
+
+晚上 1 小时：整理 + 笔记 + 自测（19:00–20:00）
+
+┌──────┬──────────────────────────────────┬────────────────┬──────────────────────────────────────────────────────┐
+│ 时间 │             具体任务             │    预期产出    │                      成功检查点                      │
+├──────┼──────────────────────────────────┼────────────────┼──────────────────────────────────────────────────────┤
+│ 20   │ 画 ER 图（三张表 +               │ 一张关系图     │ 能讲清「为什么消息要挂在会话下，而不是直接挂用户下」 │
+│ min  │ 关系），贴到笔记                 │                │                                                      │
+├──────┼──────────────────────────────────┼────────────────┼──────────────────────────────────────────────────────┤
+│ 15   │ 整理「SQLAlchemy                 │                │                                                      │
+│ min  │ 三件套」和「Session              │ 两个知识点笔记 │ 每个笔记有 1 个踩坑警告                              │
+│      │ 生命周期」笔记                   │                │                                                      │
+├──────┼──────────────────────────────────┼────────────────┼──────────────────────────────────────────────────────┤
+│ 10   │ 自测 3 道题                      │ 每题有答案草稿 │ 不确定的用 ? 标记                                    │
+│ min  │                                  │
+│ 10   │ git add . + commit               │ 一次 commit    │ git log 显示 3 条 commit                             │
+│ min  │                                  │                │                                                      │
+└──────┴──────────────────────────────────┴────────────────┴──────────────────────────────────────────────────────┘
+
+关联双链：[[Git 提交规范]]、[[PostgreSQL 数据建模]]
+
+---
+
+💻 今日代码实战
+
+关联知识：[[PostgreSQL 数据建模]]、[[Python 项目分层]]、[[环境变量与 API Key]]、[[JSON 文件读写]]、[[异常处理]]
+
+安装依赖
+
+# SQLAlchemy 2.0（ORM 核心）
+pip install sqlalchemy
+
+# 更新 requirements.txt
+pip freeze > requirements.txt
+
+---
+
+app/database.py
+
+"""
+数据库基础设施——SQLAlchemy 的引擎、会话工厂、模型基类。
+
+三件套的作用：
+    engine       —— 管理数据库连接池，全局只建一个
+    SessionLocal —— 会话工厂，每次请求生成一个独立 Session
+    Base         —— 所有 ORM 模型的基类，模型继承它来注册
+
+为什么每次请求要新 Session：
+    Session 是「数据库操作的工作区」，有自己的缓存和事务状态。
+    如果全局共用一个，两个并发请求会互相污染对方的未提交数据。
+
+get_db 依赖注入模式：
+    FastAPI 用 Depends(get_db) 给路由注入 Session，
+    请求结束时自动关闭——这是官方推荐的标准模式。
+"""
+
+from pathlib import Path
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import DeclarativeBase, sessionmaker, Session
+
+# 数据库文件路径——放在项目根目录的 data/ 下
+# SQLite 是单文件数据库，不需要单独跑服务，适
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = PROJECT_ROOT / "data"
+DATA_DIR.mkdir(exist_ok=True)  # 确保 data/ 目录存在
+
+DATABASE_URL = f"sqlite:///{DATA_DIR / 'agent_backend.db'}"
+
+# connect_args={"check_same_thread": False} 是 SQLite + FastAPI 的必要配置：
+# FastAPI 可能在不同线程处理请求，SQLite 默认禁止跨线程用同一连接
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    echo=False,  # 改成 True 可以看到每条实际执行的 SQL，调试时有用
+)
+
+# 会话工厂——不直接建 Session，而是每次调用 SessionLocal() 生成新的
+SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+
+class Base(DeclarativeBase):
+    """所有 ORM 模型的基类。
+
+    模型继承 Base 后，会被自动注册到 Base.metadata，
+    这样 create_all() 时能一次性建出所有表。
+    """
+    pass
+
+
+def get_db():
+    """FastAPI 依赖注入——给路由提供一个自动关闭的 Session。
+
+    用法（在路由函数参数里）：
+        @router.get("/xxx")
+        async def xxx(db: Session = Depends(get_db)):
+            ...
+
+    这个 generator 在请求结束后会自动执行 finally 里的 close()，
+    保证连接不会泄漏——这是数据库模式里最容易出错、也最关键的一点。
+    """
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()  # 无论请求成功还是异常，都关闭 Session
+
+---
+
+app/models/__init__.py
+
+每个模型类对应一张表：
+    User         → users 表
+    Conversation → conversations 表
+    Message      → messages 表
+
+关系：
+    User 1 ── N Conversation（一个用户有多个会话）
+    Conversation 1 ── N Message（一个会话有多条消息）
+"""
+
+from app.models.user import User
+from app.models.conversation import Conversation
+from app.models.message import Message
+
+# 导出所有模型，方便其他模块 from app.models import User, Conversation, Message
+__all__ = ["User", "Conversation", "Message"]
+
+---
+
+app/models/user.py
+
+"""用户模型——对应 users 表。"""
+
+from datetime import datetime, timezone
+
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.database import Base
+
+
+class User(Base):
+    """用户表。
+
+    一个用户可以有多个会话（一对多关系）。
+    """
+
+    __tablename__ = "users"
+
+    # Mapped[int] 是 SQLAlchemy 2.0 的类型注解风格
+    # primary_key=True 主键，auto 自增
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+
+    # unique=True 用户名唯一，index=True 加速按用户名查询
+    username: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
+
+    # 密码哈希——绝不明文存密码（Week 2 Day 6 讲哈希）
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+    # relationship 定义反向关系——通过 user.conversations 拿到该用户的所有会话
+    # cascade="all, delete-orphan"：删除用户时级联删除其所有会话
+    conversations: Mapped[list["Conversation"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+    def __repr__(self) -> str:
+        """调试时打印友好的用户信息，不打印密码哈希。"""
+        return f"<User id={self.id} username={self.username!r}>"
+
+---
+
+app/models/conversation.py
+
+"""会话模型——对应 conversations 表。"""
+
+from datetime import datetime, timezone
+
+from sqlalchemy import String, DateTime, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.database import Base
+
+
+class Conversation(Base):
+    """会话表——一次完整的对话。
+
+    一个会话属于一个用户（多对一），包含多条消息（一对多）。
+    """
+
+    __tablename__ = "conversations"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+
+    # 外键指向 users.id，ondelete="CASCADE" 让数据库层也级联删除
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # 会话标题——方便列表展示（可以取第一条消息的前 N 字）
+    title: Mapped[str] = mapped_column(String(100), default="新对话")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    # 反向关系
+    user: Mapped["User"] = relationship(back_populates="conversations")
+    messages: Mapped[list["Message"]] = relationship(
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+        order_by="Message.created_at",  # 按时间排序，查询时自动有序
+    )
+
+    def __repr__(self) -> str:
+        return f"<Conversation id={self.id} title={self.title!r}>"
+
+---
+
+app/models/message.py
+
+"""消息模型——对应 messages 表。"""
+
+from datetime import datetime, timezone
+
+from sqlalchemy import String, Text, DateTime, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.database import Base
+class Message(Base):
+    """消息表——单条对话消息。
+
+    一条消息属于一个会话（多对一）。
+    role 和 content 对应 LLM messages 的结构（复用 Week 1 的概念）。
+    """
+
+    __tablename__ = "messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+
+    conversation_id: Mapped[int] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # role 用 String 而非 Enum——保留灵活性，校验放在 Pydantic 层
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+
+    # Text 用于长内容，String 有长度限制，Text 更适合 LLM 消息
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    # 反向关系
+    conversation: Mapped["Conversation"] = relationship(back_populates="messages")
+
+    def __repr__(self) -> str:
+        preview = self.content[:30] + "..." if len(self.content) > 30 else self.content
+        return f"<Message id={self.id} role={self.role} content={preview!r}>"
+
+---
+
+建表脚本 `init_db.py` 位于项目根目录。它导入全部 ORM 模型以注册 `Base.metadata`，然后调用 `Base.metadata.create_all(engine)` 创建缺少的表，并打印数据库地址和现有表名。
+
+这是本地练习用的初始化方式；`create_all()` 不会负责修改已有表结构，生产项目应使用 Alembic 管理数据库迁移。
+
+---
+
+ORM 演示脚本 `test_orm.py` 在同一事务工作流中创建 User → Conversation → Message 对象，通过 `selectinload` 读取关系数据，再按角色过滤消息，并删除演示用户验证关联记录清理。演示用户名使用随机值，避免重复运行时触发唯一约束。
+
+---
+
+运行方式
+
+.venv\Scripts\python.exe init_db.py
+.venv\Scripts\python.exe test_orm.py
+.venv\Scripts\python.exe -m unittest discover -s tests -v
+
+---
+
+你需要观察什么
+
+1. `db.add(user)` 通常只把对象放进 Session 的待处理区；`flush()` 才把 INSERT 发给数据库并取得自增 ID，但事务还没提交。`commit()` 提交事务后数据才持久化；如果只 flush 后关闭/回滚，数据不会保存。
+2. `relationship` 让 Python 对象可以沿关系访问数据；这不等于 SQL 的 JOIN，也不等于 cascade。默认懒加载时，访问 `user.conversations`、`conversation.messages` 会按需发 SELECT，循环访问很多父对象时可能出现 N+1 查询。示例用 `selectinload` 预加载关系，通常分别查询用户、会话、消息三批数据。
+3. `cascade="all, delete-orphan"` 是 ORM 对象操作的传播规则：删除 User 时 SQLAlchemy 会处理其 Conversation 和 Message；`ForeignKey(..., ondelete="CASCADE")` 是数据库级外键规则。SQLite 默认不强制外键，所以 `database.py` 还要打开 `PRAGMA foreign_keys=ON`。关系加载是“查”，级联删除是“删”，不要混为一谈。
+4. `echo=True` 可以观察 ORM 实际发出的 SQL（如 `INSERT INTO users ...`），帮助理解 ORM 底层并非“魔法”。查看后应改回 `False`，避免日志输出过多。
+
+---
+
+今日重点概念
+
+- **ORM 的底层作用**：模型类和字段先变成 SQLAlchemy 的映射元数据；Session 跟踪对象变化；SQLAlchemy 根据这些变化生成 SQL，通过 Engine/连接交给 SQLite 执行，再把查询行还原为 Python 对象。ORM 减少重复的 SQL/映射代码，但不会替你设计表、理解事务或消除性能问题。
+- **Engine / SessionLocal / Session / Base**：Engine 管理数据库连接池；SessionLocal 是创建 Session 的工厂；每个请求/工作单元使用独立 Session 管理身份映射缓存和事务；Base.metadata 收集模型表结构供建表或迁移工具读取。
+- **外键与关系**：`conversations.user_id → users.id`、`messages.conversation_id → conversations.id` 是数据库里的引用约束；`relationship(..., back_populates=...)` 是 ORM 侧的双向对象导航，两者配合但职责不同。
+- **查询加载策略**：延迟加载方便按需取关系，但逐行访问可能造成 N+1；`selectinload` 用额外的批量 SELECT 预加载集合关系，适合一对多列表；`joinedload` 用 JOIN 装配对象，对集合关系可能放大结果行数。应结合 SQL 和实际查询量选择。
+- **Session 生命周期**：创建 Session → 查询/修改对象 → `flush`（需要提前拿 ID 或检查 SQL 时）→ `commit`；失败时 `rollback`；最后总是 `close`。FastAPI 的 `get_db` 用 `yield` + `finally` 确保关闭。Session 不是 HTTP 会话，也不应被多个并发请求共用。
+- **建表与迁移**：`Base.metadata.create_all()` 适合教学/新建本地库，只创建缺少的表，不会可靠地修改已有表结构；结构演进应使用 Alembic migration。
+
+在项目根目录运行：
+
+    .venv\Scripts\python.exe init_db.py
+    .venv\Scripts\python.exe test_orm.py
+    .venv\Scripts\python.exe -m unittest discover -s tests -v
+
+---
+
+可扩展任务
+
+1. 写一个 delete 演示：删掉一个用户，验证级联删除是否生效（会话和消息应该一起消失）。观察数据库文件里三张表的数据变化。
+2. 增加 updated_at 字段：给 Conversation 加一个 updated_at 时间戳，每次有新消息时自动更新。提示：可以在添加消息的代码里手动更新，或者研究 SQLAlchemy 的 onupdate 参数。
+3. 加唯一约束测试：给 User.username 加 unique=True 后（已经加了），尝试插入两个同名用户，观察 SQLAlchemy 抛什么异常。这是理解「数据库约束 vs 应用层校验」的好例子。
+
+---
+
+🎯 每日自我验收题
+
+第 1 题（概念解释）： SQLAlchemy 的 Session 是
+
+---
+
+第 2 题（小实现 / 设计）： 给 test_orm.py 增加一个函数 query_messages_by_role(db, role: str) -> list[Message]，查询某个会话下指定 role 的所有消息，按时间倒序返回。要求：
+
+- 用 SQLAlchemy 的 filter + order_by 实现
+- 倒序用 Message.created_at.desc()
+- 能正确处理「没有匹配消息」的情况（返回空列表）
+- 有完整 Type Hints 和中文 docstring
+
+---
+
+第 3 题（代码改错 / Bug 排查）： 下面这段代码有一个会导致数据丢失的 bug，找出来并说明为什么：
+
+db = SessionLocal()
+
+# 创建用户
+result = db2.query(User).filter(User.username == "alice").first()
+print(result)  # 输出 None？
+
+提示：从「commit 的作用」「未提交数据在 close 后的去向」两个角度排查。关联双链：[[PostgreSQL 数据建模]]。
+
+---
+
+📥 明日同步接口
+
+请你明天把下面这段填好发给我：
+
+【Day 10 学习反馈】
+1. 今天实际学习时长：
+2. 完成了哪些代码/文件：
+3. 哪个概念最清楚了：
+4. 哪个概念还没懂：
+5. 卡住的 Bug / 报错全文：
+6. 自我验收题完成情况：
+7. 明天希望：正常推进 / 放慢复习 / 加难扩展

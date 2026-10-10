@@ -1,0 +1,538 @@
+1. [[RESTful API 设计]] — 用 HTTP 动词表达资源操作
+
+它是什么： RESTful 把「对资源的操作」映射到「HTTP 方法 + URL」：GET /conversations（列出资源）、POST /conversations（创建）、GET /conversations/{id}（查看单个）、PUT/PATCH /conversations/{id}（更新）、DELETE /conversations/{id}（删除）。资源用名词（复数），动作用 HTTP 方法，不用 POST /createConversation 这种动词 URL。
+
+它解决 Agent 工程里的什么痛点： 你的 API 要被别人（前端、别的 Agent、同事）调用。如果 URL 设计混乱（一会儿 POST /create 一会儿 GET /getAll），调用方得翻遍文档才能用。RESTful 约定让「猜都能猜到接口长什么样」——拿到 /conversations 就知道 GET 是列表、POST 是新建。
+
+今天为什么必须学： 今天把 Day 10 的 ORM 能力暴露成 HTTP 接口，实现会话和消息的完整 CRUD。这是 AI-Interview 主项目「面试记录管理」的雏形——Week 7 的面试报告、Week 8 的历史记录都靠这套 CRUD。
+
+新手最容易踩什么坑：
+- 用 POST 做查询（POST /getMessages）、用 GET 做删除——动词用错，缓存和幂等性全乱
+- 路径用单数 GET /conversation/1，RESTful 惯例是复数 /conversations/1
+- 分页信息塞在响应 body 里乱放，没有统一的格式
+
+---
+
+2. [[分页]] + 统一响应 — 让 API 可控、可预期
+
+它是什么： 分页用 limit（每页条数）+ offset（跳过条数）控制返回量，响应里带 total（总数）让调用方知道还有多少。统一响应把每个接口的返回包成固定结构 {code, message, data}——成功和失败都是这个外壳，调用方写一次解析逻辑就够。
+
+它解决 Agent 工程里的什么痛点： 一个会话可能有几百条消息，GET /messages 全量返回会撑爆内存和带宽。分页让客户端「一页页拉」。统一响应解决「各接口返回格式不一」——如果列表接口返回裸数组、详情接口返回裸对象、错误接口返回另一套，调用方要写 N 套解析。
+
+今天为什么必须学： 今天要给 CRUD 接口加分页，并引入统一响应格式（这是 Day 12 统一异常处理的铺垫）。这两个习惯贯穿 Week 3-8 的所有接口。
+
+新手最容易踩什么坑：
+- 只返回 data 不返回 total，客户端不知道还有没有下一页
+- 分页参数不设默认值和上限——limit=1000000 一次拉爆数据库
+- 统一响应只在成功时用，错误时又变成裸 JSON——破坏一致性
+
+---
+
+🎯 6 小时精细化路线
+
+上午 2 小时：看文档 + 设计接口（09:00–11:00）
+
+┌───────┬────────────────────────────────────────┬────────────────────────────┬────────────────────────────────────┐
+│ 时间  │                具体任务                │          预期产出          │             成功检查点             │
+├───────┼────────────────────────────────────────┼────────────────────────────┼────────────────────────────────────┤
+│ 40    │ 读 FastAPI 官方文档的 Path/Query       │ 理解 Query 的              │ 写出带默认值和上限的分页参数       │
+│ min   │ 参数章节                               │ default、ge、le 校验       │                                    │
+├───────┼────────────────────────────────────────┼────────────────────────────┼────────────────────────────────────┤
+│ 30    │ 读 RESTful API                         │ 理解资源命名、HTTP         │ 能说出 5 个资源对应的 URL 设计     │
+│ min   │ 设计最佳实践（一篇经典博客）           │ 方法语义                   │                                    │
+├───────┼────────────────────────────────────────┼────────────────────────────┼────────────────────────────────────┤
+│ 30    │ 读 FastAPI 的 response_model 与        │ 理解创建返回 201、删除返回 │ 设计出今天 5 个接口的完整签名      │
+│ min   │ status_code 用法                       │  204                       │                                    │
+├───────┼────────────────────────────────────────┼────────────────────────────┼────────────────────────────────────┤
+│ 20    │ 设计今天的接口清单：会话 CRUD +        │ 一份接口设计表             │ 每个接口写明方法、路径、参数、返回 │
+│ min   │ 消息分页查询                           │                            │                                    │
+└───────┴────────────────────────────────────────┴────────────────────────────┴────────────────────────────────────┘
+
+关联双链：[[RESTful API 设计]]、[[FastAPI 路由]]、[[HTTP 状态码]]
+
+---
+
+下午 3 小时：写接口（13:00–16:00）
+
+┌──────┬──────────────────────────────────────────────┬───────────────────┬──────────────────────────────────────┐
+│ 时间 │                   具体任务                   │     预期产出      │              成功检查点              │
+├──────┼──────────────────────────────────────────────┼───────────────────┼──────────────────────────────────────┤
+│ 40   │ 写 app/utils/response.py：统一响应模型       │ 成功/失败统一外壳 │ ApiResponse.success(data=...) 和     │
+│ min  │ ApiResponse                                  │                   │ .error(...) 都好用                   │
+├──────┼──────────────────────────────────────────────┼───────────────────┼──────────────────────────────────────┤
+│ 50   │ 写 app/schemas/conversation.py：会话的       │ 请求/响应模型     │ 创建、更新、列表响应模型齐全         │
+│ min  │ Pydantic 模型                                │                   │                                      │
+├──────┼──────────────────────────────────────────────┼───────────────────┼──────────────────────────────────────┤
+│ 50   │ 写 app/routers/conversations.py：会话 CRUD   │ 完整 CRUD         │ /docs 里能完成增删改查               │
+│ min  │ 五个接口                                     │                   │                                      │
+├──────┼──────────────────────────────────────────────┼───────────────────┼──────────────────────────────────────┤
+│ 40   │ 写 app/routers/messages.py：消息分页查询接口 │ 分页查询          │ limit/offset 生效，total 正确        │
+│ min  │                                              │                   │                                      │
+└──────┴──────────────────────────────────────────────┴───────────────────┴──────────────────────────────────────┘
+
+关联双链：[[RESTful API 设计]]、[[分页]]、[[Pydantic 数据校验]]
+
+---
+
+晚上 1 小时：测试 + 笔记 + 自测（19:00–20:00）
+
+┌────────┬──────────────────────────────────────────────────┬────────────────────┬────────────────────────────┐
+│  时间  │                     具体任务                     │      预期产出      │         成功检查点         │
+├────────┼──────────────────────────────────────────────────┼────────────────────┼────────────────────────────┤
+│ 20 min │ 用 /docs 或 curl 全流程测试：创建→查
+├────────┼──────────────────────────────────────────────────┼────────────────────┼────────────────────────────┤
+│ 10 min │ git add . + commit                               │ 一次 commit        │ git log 显示 4 条 commit   │
+└────────┴──────────────────────────────────────────────────┴────────────────────┴────────────────────────────┘
+
+关联双链：[[Git 提交规范]]、[[RESTful API 设计]]
+
+---
+
+💻 今日代码实战
+
+关联知识：[[RESTful API 设计]]、[[分页]]、[[FastAPI 路由]]、[[Pydantic 数据校验]]、[[PostgreSQL 数据建模]]
+
+app/utils/__init__.py
+
+"""工具层——统一响应、异常等跨模块工具。"""
+
+---
+
+app/utils/response.py
+
+"""
+统一响应封装。
+
+所有接口的成功和失败响应都走这个外壳：
+    {"code": 0, "message": "success", "data": {...}}
+
+统一响应的价值：
+    1. 调用方写一次解析逻辑，适配所有接口
+    2. 业务状态码（code）和 HTTP 状态码（status
+约定：
+    code=0 表示成功，非 0 表示业务错误
+    data 放实际返回数据（成功时）
+    message 放人类可读的说明
+"""
+
+from typing import Any, Generic, TypeVar, Optional
+
+from pydantic import BaseModel
+
+# 泛型变量——让 ApiResponse 的 data 字段类型可参数化
+T = TypeVar("T")
+
+
+class ApiResponse(BaseModel, Generic[T]):
+    """统一 API 响应外壳。
+
+    Generic[T] 让 data 的类型可以变化：
+        ApiResponse[ConversationOut] 表示 data 是 ConversationOut
+        ApiResponse[list[ConversationOut]] 表示 data 是列表
+    """
+
+    code: int = 0                    # 0=成功，非0=业务错误码
+    message: str = "success"         # 人类可读的说明
+    data: Optional[T] = None         # 实际数据，成功时有值
+
+    @classmethod
+    def success(cls, data: Any = None, message: str = "success") -> "ApiResponse":
+        """构造成功响应。"""
+        return cls(code=0, message=message, data=data)
+
+    @classmethod
+    def error(cls, code: int, message: str) -> "ApiResponse":
+        """构造业务错误响应。"""
+        return cls(code=code, message=message, data=None)
+
+
+class PaginatedData(BaseModel, Generic[T]):
+    """分页数据结构——嵌套在 ApiResponse.data 里。
+
+    items 是当前页的数据，total 是符合条件的总条数，
+    limit/offset 回显本次分页参数，方便调用方调试。
+    """
+
+    items: list[T]                   # 当前页数据
+    total: int                       # 总条数（用于计算总页数）
+    limit: int                       # 每页条数
+    offset: int                      # 偏移量
+
+app/schemas/conversation.py
+
+"""会话接口的 Pydantic 模型。"""
+
+from datetime import datetime
+
+from pydantic import BaseModel, Field
+
+
+class ConversationCreate(BaseModel):
+    """创建会话的请求体。"""
+    title: str = Field(
+        default="新对话",
+        min_length=1,
+        max_length=100,
+        description="会话标题",
+    )
+
+
+class ConversationUpdate(BaseModel):
+    """更新会话的请求体（字段都可选，只更新传入的字段）。"""
+    title: str | None = Field(
+        default=None,
+        min_length=1,
+    )
+
+
+class ConversationOut(BaseModel):
+    """会话的响应体（从 ORM 模型转出的安全输出）。
+
+    注意：不包含 user_id 之外不该暴露的字段。
+    """
+
+    id: int
+    title: str
+    user_id: int
+    created_at: datetime
+
+    # 让 Pydantic 能从 ORM 对象直接转换
+    # 这是 SQLAlchemy 和 Pydantic 协作的关键配置
+    model_config = {"from_attributes": True}
+
+---
+
+app/schemas/message.py
+
+"""消息接口的 Pydantic 模型。"""
+
+from datetime import datetime
+
+from pydantic import BaseModel, Field
+
+
+class MessageOut(BaseModel):
+    """消息的响应体。"""
+
+    id: int
+    conversation_id: int
+    role: str
+    content: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class MessageListQuery(BaseModel):
+    """消息列表查询参数——用 Pydantic 管理分页。
+
+    也可以用 Query() 直接在路由里声明，但集中成一个模型更清晰。
+    """
+    limit: int = Field(default=20, ge=1, le=100, description="每页条数")
+    offset: int = Field(default=0, ge=0, description="偏移量")
+
+---
+app/routers/conversations.py
+
+"""
+会话 CRUD 路由——完整的增删改查。
+
+接口清单：
+    GET    /conversations          → 列出会话（分页）
+    POST   /conversations          → 创建会话
+    GET    /conversations/{id}     → 查看单个会话
+    PATCH  /conversations/{id}     → 更新会话标题
+    DELETE /conversations/{id}     → 删除会话
+
+RESTful 设计要点：
+    - 资源用复数名词 conversations
+    - 操作用 HTTP 方法表达（不用 /create、/delete 这种动词路径）
+    - {id} 是路径参数，指向具体资源
+"""
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.models import Conversation
+    ConversationOut,
+)
+from app.utils.response import ApiResponse, PaginatedData
+
+router = APIRouter(prefix="/conversations", tags=["会话"])
+
+
+@router.get("", response_model=ApiResponse[PaginatedData[ConversationOut]])
+async def list_conversations(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    """列出会话（分页）。
+
+    Query 参数：
+        limit: 每页条数（1-100，默认 20）
+        offset: 跳过前 N 条（默认 0）
+
+    返回分页结构：{items, total, limit, offset}
+    """
+    # 查总数——用于前端计算总页数
+    total = db.query(Conversation).count()
+
+    # 查当前页——按创建时间倒序（最新的在前）
+    items = (
+        db.query(Conversation)
+        .order_by(Conversation.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    return ApiResponse.success(
+        data=PaginatedData(
+            items=items,  # Pydantic 会通过 from_attributes 自动转换 ORM 对象
+            total=total,
+            limit=limit,
+            offset=offset,
+        )
+    )
+
+
+@router.post("", response_model=ApiResponse[ConversationOut], status_code=201)
+async def create_conversation(
+    payload: ConversationCreate,
+    db: Session = Depends(get_db),
+):
+    """创建会话。
+
+    status_code=201：RESTful 约定「创建成功返回 201 Created」，
+    而不是默认的 200。
+    """
+    # 注意：Day 11 先写死 user_id=1（因为还没有认证系统）
+    # Day 13（JWT）会改成从当前登录用户取 user_id
+    conversation = Conversation(
+        user_id=1,
+        title=payload.title,
+    )
+    db.add(conversation)
+    db.commit()
+    db.refresh(conversation)
+
+    return ApiResponse.success(data=conversation)
+
+
+@router.get("/{conversation_id}", response_model=ApiResponse[ConversationOut])
+async def get_conversation(
+    conversation_id: int,
+    db: Session = Depends(get_db),
+):
+    """查看单个会话。"""
+    conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if conversation is None:
+    return ApiResponse.success(data=conversation)
+
+
+@router.patch("/{conversation_id}", response_model=ApiResponse[ConversationOut])
+async def update_conversation(
+    conversation_id: int,
+    payload: ConversationUpdate,
+    db: Session = Depends(get_db),
+):
+    """更新会话标题。
+
+    用 PATCH 而非 PUT：PATCH 是「部分更新」，只改传入的字段；
+    PUT 是「完整替换」，要传全量字段。
+    """
+    conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="会话不存在")
+
+    # 只更新传入的字段（model_dump 排除 None）
+    update_data = payload.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(conversation, key, value)
+
+    db.commit()
+    db.refresh(conversation)
+    return ApiResponse.success(data=conversation)
+
+
+@router.delete("/{conversation_id}", status_code=204)
+async def delete_conversation(
+    conversation_id: int,
+    db: Session = Depends(get_db),
+):
+    """删除会话（连带级联删除其所有消息）。
+
+    status_code=204：RESTful 约定「删除成功返回 204 No Content」，
+    响应体为空——因为资源已经没了，没什么可返回的。
+    """
+    conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="会话不存在")
+
+    db.delete(conversation)
+    db.commit()
+    # 204 无响应体，直接 return None（FastAPI 会处理）
+    return None
+
+---
+
+app/routers/messages.py
+
+"""消息路由——消息的分页查询。"""
+
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.models import Message
+from app.schemas.message import MessageOut
+from app.utils.response import ApiResponse, PaginatedData
+
+router = APIRouter(prefix="/conversations/{conversation_id}/messages", tags=["消息"])
+
+
+@router.get("", response_model=ApiResponse[PaginatedData[MessageOut]])
+async def list_messages(
+    conversation_id: int,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    """列出某个会话下的消息（分页）。
+
+    路径设计：嵌套在 conversations 下，体现「消
+    分页参数：
+        limit: 每页条数
+        offset: 偏移量
+    """
+    # 先按会话过滤，再统计总数
+    base_query = db.query(Message).filter(Message.conversation_id == conversation_id)
+    total = base_query.count()
+
+    # 按时间正序（对话按自然顺序展示，最早的在前）
+    items = (
+        base_query
+        .order_by(Message.created_at.asc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    return ApiResponse.success(
+        data=PaginatedData(
+            items=items,
+            total=total,
+            limit=limit,
+            offset=offset,
+        )
+    )
+
+---
+
+更新 app/main.py（挂载新路由）
+
+"""FastAPI 应用入口（Day 11 更新版——挂载 CRUD 路由）。"""
+
+from fastapi import FastAPI
+
+from app.routers import health, chat, conversations, messages
+
+app = FastAPI(
+    title="Agent Backend",
+    description="AI Agent 后端服务骨架（Week 2）",
+    version="0.1.0",
+)
+
+app.include_router(health.router)
+app.include_router(chat.router)
+app.include_router(conversations.router)
+app.include_router(messages.router)
+
+
+@app.get("/")
+async def root() -> dict[str, str]:
+    return {"message": "Agent Backend 已启动，访问 /docs 查看接口文档"}
+
+---
+
+运行方式
+
+# 1. 确保建过表（Day 10 已做，若没有先跑）
+python init_db.py
+
+# 2. 启动服务
+uvicorn app.main:app --reload
+
+# 3. 用 curl 走完整 CRUD 链路（或直接在 /docs 里点）
+
+# 创建会话
+curl -X POST http://127.0.0.1:8000/conversations \
+  -H "Content-Type: application/json" \
+  -d '{"title": "面试准备"}'
+# → 201 {"code":0,"message":"success","data":{"id":1,"title":"面试准备",...}}
+
+# 列出会话（分页）
+curl "http://127.0.0.1:8000/conversations?limit=10&offset=0"
+# → {"code":0,"data":{"items":[...],"total":1,"limit":10,"offset":0}}
+
+# 查看单个会话
+curl http://127.0.0.1:8000/conversations/1
+
+# 更新会话标题
+curl -X PATCH http://127.0.0.1:8000/conversations/1 \
+  -H "Content-Type: application/json" \
+  -d '{"title": "AI 面试准备"}'
+
+# 删除会话
+curl -X DELETE http://127.0.0.1:8000/conversations/1
+# → 204（无响应体）
+
+# 查询不存在的会话
+curl http://127.0.0.1:8000/conversations/999
+# → 404 {"detail": "会话不存在"}
+
+---
+
+你需要观察什么
+
+1. 不同操作的 HTTP 状态码：创建 201、查询 200、删除 204、不存在 404。这些状态码是 RESTful 的「语义信号」——调用方不用看 body 就知道发生了什么。
+3. 分页的 total 字段：创建 3 个会话，然后 limit=2 查询，看返回的 items 是 2 条但 total 是 3。这个 total 让前端知道「还有下一页」。
+4. exclude_unset=True 的作用：PATCH 更新时，如果客户端只传 {"title": "新标题"}，model_dump(exclude_unset=True) 只返回 {"title": ...}。如果去掉这个参数，会把所有字段（包括没传的 None）都写进去，覆盖掉原值。
+
+---
+
+可扩展任务
+
+1. 给消息增加 POST 创建接口：现在是只能查消息，不能通过 API 添加消息。实现 POST /conversations/{id}/messages，接收 {role, content}，插入数据库。
+2. 增加排序参数：给列表接口加 order_by 查询参数（asc/desc），让调用方能控制排序方向，而不是写死。
+3. 实现「下一页」游标分页：研究 limit/offset 分页的缺点（offset 大了慢），尝试用「游标分页」（基于 id > last_id）替代。这是生产级分页的标准做法。
+
+---
+
+🎯 每日自我验收题
+
+第 2 题（小实现 / 设计）： 实现消息的创建接口 POST /conversations/{conversation_id}/messages。要求：
+
+- 接收 {role: "user"|"assistant", content: "..."}（用 Pydantic 模型校验）
+- 校验会话存在，不存在返回 404
+- 插入消息后返回 201 和创建的消息（MessageOut）
+- 用 ApiResponse 统一响应外壳
+
+---
+
+第 3 题（代码改错 / Bug 排查）： 下面这段分页代码有一个 bug，会导致「漏数据」或「重复数据」。找出来并说明为什么：
+
+# 列出消息，按时间排序分页
+items = (
+    db.query(Message)
+    .filter(Message.conversation_id == conv_id)
+    .order_by(Message.created_at.asc())  # 按时间正序
+    .offset(offset)
+    .all()
+)
+
+total = db.query(Message).filter(Message.conversation_id == conv_id).count()
+
+提示：想想如果查询过程中有新消息插入，offset 分页会发生什么（「偏移漂移」问题）。这是 limit/offset 分页的经典缺陷。关联双链：[[分页]]。s
