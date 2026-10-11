@@ -14,7 +14,7 @@ FastAPI和CLI的本质区别：
 
 from fastapi import FastAPI
 
-from app.routers import health,chat
+from app.routers import health,chat,conversations,messages
 
 
 #创建 FastAPI 应用实例
@@ -30,6 +30,8 @@ app=FastAPI(
 #每个router有自己的prefix和tags，见各自文件
 app.include_router(health.router)
 app.include_router(chat.router)
+app.include_router(conversations.router)
+app.include_router(messages.router)
 
 #根路径，访问本机端口时的提示
 @app.get("/")
