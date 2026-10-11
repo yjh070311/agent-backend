@@ -2,7 +2,7 @@
 FastAPI应用入口
 
 启动方式
-    unicorn app.main:app --reload
+    uvicorn app.main:app --reload
 
     app.main 路径
     app 实例变量名
@@ -22,7 +22,7 @@ from app.routers import health,chat,conversations,messages
 app=FastAPI(
     title="Agent Backend",
     description="AI Agent 后端服务骨架",
-    version="0.1.0",
+    version="0.2.0",
 )
 
 
@@ -43,5 +43,5 @@ async def root()->dict[str,str]:
         -async def：fastapi支持异步路由
         -dict[str,str],返回值类型注解，自动写入文档
     """
-    return {"messages":"Agent Backend 已启动，访问.docs查看接口文档"}
+    return {"message":"Agent Backend 已启动，访问.docs查看接口文档"}
 

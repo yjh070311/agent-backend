@@ -6,12 +6,13 @@ from fastapi import APIRouter,Depends,HTTPException,Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Conversation
+from app.models import Conversation,User
 
 from app.schemas.conversation import ConversationCreate,ConversationOut,ConversationUpdate
 from app.utils.response import ApiResponse,PaginatedData
+from app.utils.deps import get_current_user
 
-router=APIRouter(prefix="/conversation",tags="[会话]")
+router=APIRouter(prefix="/conversation",tags=["会话"])
 
 @router.get("",response_model=ApiResponse[PaginatedData[ConversationOut]])
 async def list_conversation(
@@ -26,19 +27,20 @@ async def list_conversation(
            .order_by(Conversation.created_at.desc())
            .offset(offset)
            .limit(limit)
-           .all
+           .all()
            
            )
 
     return ApiResponse.success(data=PaginatedData(limit=limit,offset=offset,items=items,total=total))   #返回查询结果
 
-@router.post("",response_model=ApiResponse[Conversation],status_code=201)
+@router.post("",response_model=ApiResponse[ConversationOut],status_code=201)
 async def create_conversation(
-    payload:ConversationOut,
-    db:Session=Depends(get_db),
+    payload:ConversationCreate,
+    db:Session=Depends(get_db), #depends只在函数签名默认值，被调用才执行
+    user:User=Depends(get_current_user)
 ):
     conversation=Conversation(
-        user_id=1,
+        user_id=user.id,
         title=payload.title,
     )
 
@@ -52,7 +54,7 @@ async def create_conversation(
 @router.get("/{conversation_id}",response_model=ApiResponse[ConversationOut])
 async def get_conversation(
     conversation_id:int,
-    db:Session=Depends(get_db()),
+    db:Session=Depends(get_db),
 ):
     conversation=db.query(Conversation).filter(Conversation.id==conversation_id).first()
 
@@ -72,7 +74,7 @@ async def update_conversation(
         raise HTTPException(status_code=404,detail="不存在")
 
     update_data=payload.model_dump(exclude_unset=True)  #只更新传入的字段
-    for key,value in update_data.items:
+    for key,value in update_data.items():
         setattr(conversation,key,value)
 
     db.commit()
