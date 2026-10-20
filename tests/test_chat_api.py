@@ -89,8 +89,7 @@ class ChatApiTests(unittest.TestCase):
             with self.subTest(payload=payload):
                 response = self.client.post("/chat", json=payload)
                 self.assertEqual(response.status_code, 422)
-                self.assertIn("detail", response.json())
-
+                self.assertEqual(response.json()["code"], 42200)
 
 if __name__ == "__main__":
     unittest.main()
