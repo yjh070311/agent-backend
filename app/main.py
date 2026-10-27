@@ -6,9 +6,10 @@
 
 from fastapi import FastAPI
 
+from app.core.lifespan import lifespan
 from app.core.logging_config import setup_logging
 from app.core.middleware import register_middleware
-from app.routers import auth, chat, conversations, health, messages
+from app.routers import auth, chat, conversations, health, llm, messages
 from app.utils.errors import register_exception_handler
 
 setup_logging()
@@ -16,7 +17,8 @@ setup_logging()
 app = FastAPI(
     title="Agent Backend",
     description="AI Agent 后端服务骨架",
-    version="0.3.0",
+    version="0.4.0",
+    lifespan=lifespan,
 )
 
 register_middleware(app)
@@ -27,6 +29,7 @@ app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(conversations.router)
 app.include_router(messages.router)
+app.include_router(llm.router)
 
 
 @app.get("/")

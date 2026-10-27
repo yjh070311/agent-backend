@@ -8,3 +8,5 @@ data/*.db
 venv/
 
 data/uploads/
+
+.pytest_cache/

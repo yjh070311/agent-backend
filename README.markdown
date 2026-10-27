@@ -1,6 +1,6 @@
 # agent-backend
 
-AI Agent 应用的后端服务骨架：FastAPI+SQLAlchemy+JWT,作为'AI-interview'模拟面试系统的额服务层地基
+AI Agent 应用的后端服务骨架：FastAPI+SQLAlchemy+JWT,作为'AI-Interview'模拟面试系统的服务层地基
 
 ## 功能
 
