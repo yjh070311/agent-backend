@@ -11,6 +11,8 @@ from app.core.logging_config import setup_logging
 from app.core.middleware import register_middleware
 from app.routers import auth, chat, conversations, health, llm, messages
 from app.utils.errors import register_exception_handler
+from app.routers import auth, chat, conversations, health, llm, messages, resumes
+from app.routers import match
 
 setup_logging()
 
@@ -30,7 +32,9 @@ app.include_router(chat.router)
 app.include_router(conversations.router)
 app.include_router(messages.router)
 app.include_router(llm.router)
-
+app.include_router(llm.router)
+app.include_router(resumes.router)
+app.include_router(match.router)
 
 @app.get("/")
 async def root() -> dict[str, str]:

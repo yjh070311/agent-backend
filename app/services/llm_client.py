@@ -2,6 +2,7 @@
 
 from typing import Any
 
+import json
 import httpx2
 from fastapi import Request
 
@@ -93,3 +94,70 @@ async def chat_once(
 def get_llm_http(request: Request) -> httpx2.AsyncClient:
     """从 app.state 取出 lifespan 创建的共享客户端。"""
     return request.app.state.llm_http
+
+
+async def chat_stream(
+    http: httpx2.AsyncClient,
+    messages: list[dict[str, str]],
+    *,
+    temperature: float = 0.7,
+    max_tokens: int = 1024,
+):
+    """流式对话：边收边吐内容增量（async generator）。
+
+    OpenAI-compatible 的流式响应是若干行：
+        data: {"choices":[{"delta":{"content":"你"}}]}
+        data: [DONE]
+    """
+    settings = get_settings()
+    if not settings.llm_api_key:
+        raise BusinessException(
+            code=50002, message="未配置 LLM_API_KEY，请在 .env 里填写", status_code=500
+        )
+
+    payload = {
+        "model": settings.llm_model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": True,
+    }
+
+    try:
+        async with http.stream(
+            "POST",
+            "/v1/chat/completions",
+            headers={"Authorization": f"Bearer {settings.llm_api_key}"},
+            json=payload,
+        ) as response:
+            if response.status_code == 401:
+                raise BusinessException(code=50003, message="LLM 凭证无效", status_code=502)
+            if response.status_code == 429:
+                raise BusinessException(
+                    code=42901, message="LLM 限流，请稍后重试", status_code=429
+                )
+            if response.status_code >= 400:
+                body = await response.aread()
+                raise LLMServiceError(f"LLM 返回 {response.status_code}: {body[:200]!r}")
+
+            async for line in response.aiter_lines():
+                if not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if data == "[DONE]":
+                    return
+                try:
+                    chunk = json.loads(data)
+                except json.JSONDecodeError:
+                    # 半截 JSON 跳过，流不能因为一行坏掉就整体中断
+                    continue
+                choices = chunk.get("choices") or []
+                if not choices:
+                    continue
+                delta = (choices[0].get("delta") or {}).get("content")
+                if delta:
+                    yield delta
+    except httpx2.TimeoutException as exc:
+        raise LLMTimeoutError() from exc
+    except httpx2.RequestError as exc:
+        raise LLMServiceError(f"LLM 网络请求失败：{exc}") from exc
